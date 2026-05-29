@@ -355,22 +355,16 @@ let curFilter = 'all';
 const d = new Date();
 document.getElementById('today-str').textContent = d.getFullYear()+'年'+(d.getMonth()+1)+'月'+d.getDate()+'日（'+'日月火水木金土'[d.getDay()]+'）';
 
-// Firebase ストレージ
-function getDB(){ return firebase.database(); }
+// ストレージ（localStorage版）
 async function saveRecs(recs){
-  try{ await getDB().ref('records').set(recs); }catch(e){ console.error('保存エラー',e); }
+  try{ localStorage.setItem('risk_v4', JSON.stringify(recs)); }catch(e){}
 }
 async function loadRecsLocal(){
-  try{
-    const snap = await getDB().ref('records').get();
-    return snap.exists() ? Object.values(snap.val()) : [];
-  }catch(e){ return []; }
+  try{ const d=localStorage.getItem('risk_v4'); return d?JSON.parse(d):[]; }catch(e){ return []; }
 }
-// リアルタイム監視
 function watchRecs(callback){
-  getDB().ref('records').on('value', snap => {
-    const data = snap.exists() ? Object.values(snap.val()) : [];
-    data.sort((a,b) => b.id - a.id);
+  loadRecsLocal().then(data=>{
+    data.sort((a,b)=>b.id-a.id);
     callback(data);
   });
 }
@@ -394,35 +388,18 @@ function sendNotify(title, body){
 // Firebaseリアルタイム監視で新着通知
 let lastCount = null;
 function watchNewEntries(){
-  getDB().ref('records').on('value', snap=>{
-    const data = snap.exists() ? Object.values(snap.val()) : [];
-    if(lastCount === null){
-      lastCount = data.length;
-      return;
+  setInterval(async ()=>{
+    const data = await loadRecsLocal();
+    if(lastCount===null){ lastCount=data.length; return; }
+    if(data.length>lastCount){
+      const newest=data.sort((a,b)=>b.id-a.id)[0];
+      sendNotify('📋 新しい記録が入りました',`${newest.floor}　${newest.user}　${newest.category}`);
+      lastCount=data.length;
     }
-    if(data.length > lastCount){
-      const newest = data.sort((a,b)=>b.id-a.id)[0];
-      sendNotify(
-        '📋 新しい記録が入りました',
-        `${newest.floor}　${newest.user}　${newest.category}`
-      );
-      lastCount = data.length;
-    }
-  });
+  }, 5000);
 }
 
-function watchStatusChanges(){
-  getDB().ref('records').on('child_changed', snap=>{
-    if(!currentUser) return;
-    const r = snap.val();
-    if(r && r.status){
-      sendNotify(
-        '🔄 ステータスが更新されました',
-        `${r.user}　${r.category}　→　${r.status}`
-      );
-    }
-  });
-}
+function watchStatusChanges(){ /* localStorage版では省略 */ }
 
 // 定時通知
 function startScheduledNotifications(){
@@ -742,4 +719,178 @@ function openDetail(id){
     <div style="margin-bottom:14px">
       <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">ステータス変更</div>
       <div class="status-row" style="flex-wrap:wrap">
-        ${STATUS_FLOW.map(s=>`<button class="st-btn ${r.status===s?'active-'+s:''}" onclick="updStatus('${r.id}','${s}')" style="min-width:80px;margin-bottom:4px">${s
+        ${STATUS_FLOW.map(s=>`<button class="st-btn ${r.status===s?'active-'+s:''}" onclick="updStatus('${r.id}','${s}')" style="min-width:80px;margin-bottom:4px">${s}</button>`).join('')}
+      </div>
+    </div>`:''}
+
+    <div style="margin-bottom:14px">
+      <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">コメント・引き継ぎ</div>
+      ${commentsHtml}
+      ${canApprove?`
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <input type="text" id="comment-input" placeholder="コメントを入力" style="flex:1;font-size:14px;padding:9px 11px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font-family:inherit">
+        <button onclick="addComment('${r.id}')" class="btn-sm">送信</button>
+      </div>`:''}
+    </div>
+
+    ${canTask?`
+    <div style="margin-bottom:14px">
+      <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">対応タスク</div>
+      <div id="sheet-tasks">${tasksHtml}</div>
+      <div class="task-add" style="margin-top:8px">
+        <input type="text" id="sheet-task-input" placeholder="タスクを追加" style="flex:1;font-size:14px;padding:9px 11px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font-family:inherit" onkeydown="if(event.key==='Enter')addRecTask('${r.id}')">
+        <button onclick="addRecTask('${r.id}')" class="task-add-btn">＋ 追加</button>
+      </div>
+    </div>
+    <div class="mirai-box" style="margin-bottom:14px">
+      <label class="mirai-check">
+        <input type="checkbox" ${r.miraiReflected?'checked':''} onchange="toggleMirai('${r.id}')">
+        📅 未来予想図に反映済
+      </label>
+    </div>`:''}
+  `;
+  document.getElementById('overlay').classList.add('show');
+}
+
+async function updStatus(id,status){
+  const recs=await loadRecsLocal();
+  const idx=recs.findIndex(r=>String(r.id)===String(id));
+  if(idx>-1){recs[idx].status=status;await saveRecs(recs);}
+  allRecs=recs;
+  document.getElementById('overlay').classList.remove('show');
+  loadRecs();loadApprove();loadTasks();
+}
+
+async function addComment(id){
+  const inp=document.getElementById('comment-input');
+  const text=inp.value.trim();
+  if(!text) return;
+  const recs=await loadRecsLocal();
+  const rec=recs.find(r=>String(r.id)===String(id));
+  if(rec){
+    if(!rec.comments) rec.comments=[];
+    const n=new Date();
+    rec.comments.push({user:ROLES[currentUser].label,text,time:n.getHours()+':'+String(n.getMinutes()).padStart(2,'0')});
+    await saveRecs(recs);allRecs=recs;
+  }
+  openDetail(id);
+}
+
+async function addRecTask(id){
+  const inp=document.getElementById('sheet-task-input');
+  const val=inp.value.trim();
+  if(!val) return;
+  const recs=await loadRecsLocal();
+  const rec=recs.find(r=>String(r.id)===String(id));
+  if(rec){if(!rec.tasks)rec.tasks=[];rec.tasks.push({id:Date.now(),text:val,done:false});await saveRecs(recs);allRecs=recs;}
+  openDetail(id);loadTasks();
+}
+
+async function toggleRecTask(recId,taskId){
+  const recs=await loadRecsLocal();
+  const rec=recs.find(r=>String(r.id)===String(recId));
+  if(rec&&rec.tasks){rec.tasks=rec.tasks.map(t=>t.id===taskId?{...t,done:!t.done}:t);await saveRecs(recs);allRecs=recs;}
+  openDetail(recId);loadTasks();
+}
+
+async function toggleMirai(id){
+  const recs=await loadRecsLocal();
+  const rec=recs.find(r=>String(r.id)===String(id));
+  if(rec){
+    rec.miraiReflected=!rec.miraiReflected;
+    if(rec.miraiReflected) rec.status='未来予想図反映済';
+    await saveRecs(recs);allRecs=recs;
+  }
+  openDetail(id);loadRecs();loadTasks();
+}
+
+async function loadKanri(){
+  if(!currentUser||ROLES[currentUser].level<9){
+    document.getElementById('kanri-stats').innerHTML='<div class="empty">権限がありません</div>';return;
+  }
+  document.getElementById('kanri-upd').textContent='更新中...';
+  allRecs=await loadRecsLocal();
+  const el=document.getElementById('kanri-stats');
+  
+  const total=allRecs.length;
+  const byStatus={};
+  const byCat={};
+  const byFloor={};
+  const pending=allRecs.filter(r=>r.status!=='未来予想図反映済');
+  const done=allRecs.filter(r=>r.status==='未来予想図反映済');
+  const high=allRecs.filter(r=>r.level==='high'&&r.status!=='未来予想図反映済');
+  
+  allRecs.forEach(r=>{
+    byStatus[r.status]=(byStatus[r.status]||0)+1;
+    byCat[r.category]=(byCat[r.category]||0)+1;
+    byFloor[r.floor]=(byFloor[r.floor]||0)+1;
+  });
+
+  const statCard=(label,val,color)=>`
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;text-align:center">
+      <div style="font-size:22px;font-weight:700;color:${color}">${val}</div>
+      <div style="font-size:12px;color:var(--text2);margin-top:4px">${label}</div>
+    </div>`;
+
+  const barItem=(label,val,max,color)=>`
+    <div style="margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px">
+        <span>${label}</span><span style="font-weight:700;color:${color}">${val}件</span>
+      </div>
+      <div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden">
+        <div style="height:100%;width:${max>0?Math.round(val/max*100):0}%;background:${color};border-radius:3px"></div>
+      </div>
+    </div>`;
+
+  const maxCat=Math.max(...Object.values(byCat),1);
+  const maxFloor=Math.max(...Object.values(byFloor),1);
+
+  el.innerHTML=`
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:1rem">
+      ${statCard('総記録数',total,'var(--text)')}
+      ${statCard('対応中',pending.length,'var(--amber)')}
+      ${statCard('完了',done.length,'var(--green)')}
+      ${statCard('🔴 高重要度（未完了）',high.length,'var(--red)')}
+    </div>
+
+    <div class="card" style="margin-bottom:1rem">
+      <div class="sec-label">📊 ステータス別</div>
+      ${Object.entries(byStatus).map(([s,v])=>barItem(s,v,total,STATUS_BADGE[s]==='b-red'?'var(--red)':STATUS_BADGE[s]==='b-amber'?'var(--amber)':STATUS_BADGE[s]==='b-green'?'var(--green)':'var(--blue)')).join('')}
+    </div>
+
+    <div class="card" style="margin-bottom:1rem">
+      <div class="sec-label">⚠️ リスク種類別</div>
+      ${Object.entries(byCat).sort((a,b)=>b[1]-a[1]).map(([c,v])=>barItem(c,v,maxCat,catColor[c]==='b-red'?'var(--red)':catColor[c]==='b-amber'?'var(--amber)':catColor[c]==='b-purple'?'var(--purple)':'var(--blue)')).join('')}
+    </div>
+
+    <div class="card" style="margin-bottom:1rem">
+      <div class="sec-label">🏢 部署別</div>
+      ${Object.entries(byFloor).sort((a,b)=>b[1]-a[1]).map(([f,v])=>barItem(f,v,maxFloor,'var(--blue)')).join('')}
+    </div>
+
+    <div class="card">
+      <div class="sec-label">🔴 高重要度・未完了の案件</div>
+      ${high.length===0?'<p style="font-size:13px;color:var(--text2)">現在ありません 👍</p>':
+        high.map(r=>`<div class="rec-card" onclick="openDetail('${r.id}')" style="margin-bottom:8px">
+          <div style="font-size:14px;font-weight:700">${r.user} <span style="font-size:12px;font-weight:400;color:var(--text2)">/ ${r.floor}</span></div>
+          <div style="font-size:12px;color:var(--text2);margin-top:2px">${r.category}　報告：${r.staff}</div>
+          <div class="tags" style="margin-top:6px">
+            <span class="badge ${STATUS_BADGE[r.status]||'b-gray'}">${r.status}</span>
+            <span class="badge b-red">🔴 高</span>
+          </div>
+        </div>`).join('')}
+    </div>
+  `;
+  
+  const n=new Date();
+  document.getElementById('kanri-upd').textContent='最終更新：'+n.getHours()+':'+String(n.getMinutes()).padStart(2,'0');
+}
+
+function closeDetail(e){
+  if(e.target===document.getElementById('overlay'))
+    document.getElementById('overlay').classList.remove('show');
+}
+</script>
+
+</body>
+</html>
