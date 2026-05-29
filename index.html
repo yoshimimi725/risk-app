@@ -51,6 +51,7 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--text
 .role-staff{background:#F0F0F0;color:#555}
 .role-first{background:var(--blue-bg);color:var(--blue)}
 .role-escal{background:var(--purple-bg);color:var(--purple)}
+.role-kanri{background:#1A1A1A;color:#FFFFFF}
 .logout-btn{font-size:12px;padding:4px 10px;border:1px solid var(--border);border-radius:20px;background:none;color:var(--text2);cursor:pointer;font-family:inherit}
 .logout-btn:hover{background:var(--bg)}
 
@@ -193,6 +194,7 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--text
         <option value="ueda">植田</option>
         <option value="kamehashi">亀橋</option>
         <option value="morikawa">森川</option>
+        <option value="kanri">管理用</option>
       </select>
     </div>
     <div class="login-field">
@@ -222,6 +224,7 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--text
     <button class="tab" id="tab-btn-list" onclick="goTab('list')">📋 一覧</button>
     <button class="tab" id="tab-btn-approve" onclick="goTab('approve')">✅ 確認</button>
     <button class="tab" id="tab-btn-task" onclick="goTab('task')">🎯 タスク</button>
+    <button class="tab" id="tab-btn-kanri" onclick="goTab('kanri')">👑 管理</button>
   </div>
 
   <!-- 記録タブ -->
@@ -229,9 +232,13 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--text
     <div id="toast" class="toast">✅ 記録・報告しました</div>
     <div class="card">
       <div class="sec-label">👤 基本情報 <span class="req">必須</span></div>
+      <div class="field" style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 11px;margin-bottom:12px">
+        <span style="font-size:12px;color:var(--text2)">記録者（ログイン中）</span>
+        <div style="font-size:14px;font-weight:700;color:var(--text);margin-top:3px" id="f-loginuser-disp">-</div>
+      </div>
       <div class="row2">
         <div class="field"><label>利用者名</label><input type="text" id="f-user" placeholder="例：山田 花子"></div>
-        <div class="field"><label>報告者名</label><input type="text" id="f-staff" placeholder="例：鈴木"></div>
+        <div class="field"><label>報告者名（伝えてきた人）</label><input type="text" id="f-staff" placeholder="例：田中（現場職員）"></div>
       </div>
       <div class="row2">
         <div class="field"><label>部署</label>
@@ -333,15 +340,17 @@ const PASSWORDS = {
   yasui:     'yasui2024',
   ueda:      'ueda2024',
   kamehashi: 'kame2024',
-  morikawa:  'mori2024'
+  morikawa:  'mori2024',
+  kanri:     'kanri0000'
 };
 
 const ROLES = {
-  staff:     {label:'職員',    cls:'role-staff',  level:1},
-  yasui:     {label:'安井（第一報）',  cls:'role-first',  level:3},
-  ueda:      {label:'植田（第一報）',  cls:'role-first',  level:3},
-  kamehashi: {label:'亀橋（管理）',cls:'role-escal', level:3},
-  morikawa:  {label:'森川（管理）',cls:'role-escal', level:3}
+  staff:     {label:'職員',          cls:'role-staff',  level:1},
+  yasui:     {label:'安井（第一報）', cls:'role-first',  level:3},
+  ueda:      {label:'植田（第一報）', cls:'role-first',  level:3},
+  kamehashi: {label:'亀橋（管理）',  cls:'role-escal',  level:3},
+  morikawa:  {label:'森川（管理）',  cls:'role-escal',  level:3},
+  kanri:     {label:'総管理者',      cls:'role-kanri',  level:9}
 };
 
 let currentUser = null;
@@ -371,6 +380,108 @@ function watchRecs(callback){
   });
 }
 
+// ブラウザ通知
+function requestNotifyPermission(){
+  if('Notification' in window && Notification.permission==='default'){
+    Notification.requestPermission();
+  }
+}
+
+function sendNotify(title, body){
+  if('Notification' in window && Notification.permission==='granted'){
+    new Notification(title, {
+      body: body,
+      icon: 'https://cdn-icons-png.flaticon.com/512/1828/1828640.png'
+    });
+  }
+}
+
+// Firebaseリアルタイム監視で新着通知
+let lastCount = null;
+function watchNewEntries(){
+  db.ref('records').on('value', snap=>{
+    const data = snap.exists() ? Object.values(snap.val()) : [];
+    if(lastCount === null){
+      lastCount = data.length;
+      return;
+    }
+    if(data.length > lastCount){
+      const newest = data.sort((a,b)=>b.id-a.id)[0];
+      sendNotify(
+        '📋 新しい記録が入りました',
+        `${newest.floor}　${newest.user}　${newest.category}`
+      );
+      lastCount = data.length;
+    }
+  });
+}
+
+function watchStatusChanges(){
+  db.ref('records').on('child_changed', snap=>{
+    if(!currentUser) return;
+    const r = snap.val();
+    if(r && r.status){
+      sendNotify(
+        '🔄 ステータスが更新されました',
+        `${r.user}　${r.category}　→　${r.status}`
+      );
+    }
+  });
+}
+
+// 定時通知
+function startScheduledNotifications(){
+  // 1分ごとにチェック
+  setInterval(async ()=>{
+    if(!currentUser) return;
+    if(Notification.permission!=='granted') return;
+
+    const now = new Date();
+    const h = now.getHours();
+    const m = now.getMinutes();
+
+    const recs = await loadRecsLocal();
+    const pending = recs.filter(r=>r.status!=='未来予想図反映済');
+    const inProgress = recs.filter(r=>r.status==='対応中'||r.status==='エスカレーション中');
+    const high = recs.filter(r=>r.level==='high'&&r.status!=='未来予想図反映済');
+    const today = new Date().toDateString();
+    const todayRecs = recs.filter(r=>new Date(r.ts).toDateString()===today);
+    const openTasks = recs.reduce((acc,r)=>{
+      if(r.tasks) acc+=r.tasks.filter(t=>!t.done).length;
+      return acc;
+    },0);
+
+    // 朝8時
+    if(h===8&&m===0){
+      sendNotify(
+        '☀️ おはようございます',
+        `未対応・対応中：${pending.length}件　高重要度：${high.length}件`
+      );
+    }
+    // 昼12時
+    if(h===12&&m===0){
+      if(high.length>0){
+        sendNotify(
+          '⚠️ 昼の確認',
+          `高重要度で止まっている案件が${high.length}件あります`
+        );
+      } else {
+        sendNotify(
+          '✅ 昼の確認',
+          `高重要度の未対応案件はありません👍`
+        );
+      }
+    }
+    // 夕17時
+    if(h===17&&m===0){
+      sendNotify(
+        '🌆 本日の業務まとめ',
+        `本日の記録：${todayRecs.length}件　未完了タスク：${openTasks}件`
+      );
+    }
+  }, 60000); // 1分ごとにチェック
+}
+
 // ログイン
 function doLogin(){
   const u = document.getElementById('login-user').value;
@@ -389,9 +500,15 @@ function doLogin(){
   const level = role.level;
   document.getElementById('tab-btn-approve').disabled = level < 2;
   document.getElementById('tab-btn-task').disabled = level < 3;
+  document.getElementById('tab-btn-kanri').disabled = level < 9;
   document.getElementById('f-datetime').value = new Date().toISOString().slice(0,16);
   selLevel('mid');
+  document.getElementById('f-loginuser-disp').textContent = ROLES[currentUser].label;
   loadRecs();
+  requestNotifyPermission();
+  watchNewEntries();
+  watchStatusChanges();
+  startScheduledNotifications();
 }
 
 function doLogout(){
@@ -404,13 +521,14 @@ function doLogout(){
 
 // タブ切替
 function goTab(t){
-  ['input','list','approve','task'].forEach(id=>{
+  ['input','list','approve','task','kanri'].forEach(id=>{
     document.getElementById('tab-'+id).style.display = t===id?'block':'none';
     document.getElementById('tab-btn-'+id)?.classList.toggle('active', t===id);
   });
   if(t==='list') loadRecs();
   if(t==='approve') loadApprove();
   if(t==='task') loadTasks();
+  if(t==='kanri') loadKanri();
 }
 
 // リスク・重要度選択
@@ -437,6 +555,7 @@ async function submitRecord(){
   if(!user||!staff||!floor||!cat){alert('利用者名・報告者・部署・リスクの種類は必須です');return;}
   const rec={
     id:Date.now(), user, staff, floor,
+    loginUser: ROLES[currentUser].label,
     category:cat, level:window._level||'mid',
     datetime:document.getElementById('f-datetime').value,
     detail:document.getElementById('f-detail').value,
@@ -509,7 +628,7 @@ function renderRecs(){
     return `<div class="rec-card" onclick="openDetail('${r.id}')">
       <div class="rec-head">
         <div><div class="rec-name">${r.user} <span style="font-size:13px;font-weight:400;color:var(--text2)">/ ${r.floor}</span></div>
-        <div class="rec-sub">${dt}　報告：${r.staff}</div></div>
+        <div class="rec-sub">${dt}　報告者：${r.staff}　記録：${r.loginUser||r.staff}</div></div>
         <span class="badge ${STATUS_BADGE[r.status]||'b-gray'}">${r.status||''}</span>
       </div>
       ${r.detail?`<div style="font-size:13px;color:var(--text2)">${r.detail.slice(0,60)}${r.detail.length>60?'…':''}</div>`:''}
@@ -610,7 +729,11 @@ function openDetail(id){
   document.getElementById('sheet').innerHTML=`
     <button class="sheet-close" onclick="document.getElementById('overlay').classList.remove('show')">×</button>
     <h2 style="font-size:17px;font-weight:700;margin-bottom:3px">${r.user}</h2>
-    <p style="font-size:13px;color:var(--text2);margin-bottom:10px">${r.floor} / ${dt} / 報告：${r.staff}</p>
+    <p style="font-size:13px;color:var(--text2);margin-bottom:10px">${r.floor} / ${dt}</p>
+    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+      <span style="font-size:13px;background:var(--blue-bg);color:var(--blue);padding:4px 10px;border-radius:20px;font-weight:500">📝 記録者：${r.loginUser||r.staff}</span>
+      <span style="font-size:13px;background:var(--green-bg);color:var(--green);padding:4px 10px;border-radius:20px;font-weight:500">🗣️ 報告者：${r.staff}</span>
+    </div>
     ${flowBar(r.status)}
     <div class="tags" style="margin-bottom:14px">
       <span class="badge ${catColor[r.category]||'b-gray'}">${r.category}</span>
@@ -622,97 +745,4 @@ function openDetail(id){
 
     ${canApprove?`
     <div style="margin-bottom:14px">
-      <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">ステータス変更</div>
-      <div class="status-row" style="flex-wrap:wrap">
-        ${STATUS_FLOW.map(s=>`<button class="st-btn ${r.status===s?'active-'+s:''}" onclick="updStatus('${r.id}','${s}')" style="min-width:80px;margin-bottom:4px">${s}</button>`).join('')}
-      </div>
-    </div>`:''}
-
-    <div style="margin-bottom:14px">
-      <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">コメント・引き継ぎ</div>
-      ${commentsHtml}
-      ${canApprove?`
-      <div style="display:flex;gap:8px;margin-top:10px">
-        <input type="text" id="comment-input" placeholder="コメントを入力" style="flex:1;font-size:14px;padding:9px 11px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font-family:inherit">
-        <button onclick="addComment('${r.id}')" class="btn-sm">送信</button>
-      </div>`:''}
-    </div>
-
-    ${canTask?`
-    <div style="margin-bottom:14px">
-      <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">対応タスク</div>
-      <div id="sheet-tasks">${tasksHtml}</div>
-      <div class="task-add" style="margin-top:8px">
-        <input type="text" id="sheet-task-input" placeholder="タスクを追加" style="flex:1;font-size:14px;padding:9px 11px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font-family:inherit" onkeydown="if(event.key==='Enter')addRecTask('${r.id}')">
-        <button onclick="addRecTask('${r.id}')" class="task-add-btn">＋ 追加</button>
-      </div>
-    </div>
-    <div class="mirai-box" style="margin-bottom:14px">
-      <label class="mirai-check">
-        <input type="checkbox" ${r.miraiReflected?'checked':''} onchange="toggleMirai('${r.id}')">
-        📅 未来予想図に反映済
-      </label>
-    </div>`:''}
-  `;
-  document.getElementById('overlay').classList.add('show');
-}
-
-async function updStatus(id,status){
-  const recs=await loadRecsLocal();
-  const idx=recs.findIndex(r=>String(r.id)===String(id));
-  if(idx>-1){recs[idx].status=status;await saveRecs(recs);}
-  allRecs=recs;
-  document.getElementById('overlay').classList.remove('show');
-  loadRecs();loadApprove();loadTasks();
-}
-
-async function addComment(id){
-  const inp=document.getElementById('comment-input');
-  const text=inp.value.trim();
-  if(!text) return;
-  const recs=await loadRecsLocal();
-  const rec=recs.find(r=>String(r.id)===String(id));
-  if(rec){
-    if(!rec.comments) rec.comments=[];
-    const n=new Date();
-    rec.comments.push({user:ROLES[currentUser].label,text,time:n.getHours()+':'+String(n.getMinutes()).padStart(2,'0')});
-    await saveRecs(recs);allRecs=recs;
-  }
-  openDetail(id);
-}
-
-async function addRecTask(id){
-  const inp=document.getElementById('sheet-task-input');
-  const val=inp.value.trim();
-  if(!val) return;
-  const recs=await loadRecsLocal();
-  const rec=recs.find(r=>String(r.id)===String(id));
-  if(rec){if(!rec.tasks)rec.tasks=[];rec.tasks.push({id:Date.now(),text:val,done:false});await saveRecs(recs);allRecs=recs;}
-  openDetail(id);loadTasks();
-}
-
-async function toggleRecTask(recId,taskId){
-  const recs=await loadRecsLocal();
-  const rec=recs.find(r=>String(r.id)===String(recId));
-  if(rec&&rec.tasks){rec.tasks=rec.tasks.map(t=>t.id===taskId?{...t,done:!t.done}:t);await saveRecs(recs);allRecs=recs;}
-  openDetail(recId);loadTasks();
-}
-
-async function toggleMirai(id){
-  const recs=await loadRecsLocal();
-  const rec=recs.find(r=>String(r.id)===String(id));
-  if(rec){
-    rec.miraiReflected=!rec.miraiReflected;
-    if(rec.miraiReflected) rec.status='未来予想図反映済';
-    await saveRecs(recs);allRecs=recs;
-  }
-  openDetail(id);loadRecs();loadTasks();
-}
-
-function closeDetail(e){
-  if(e.target===document.getElementById('overlay'))
-    document.getElementById('overlay').classList.remove('show');
-}
-</script>
-</body>
-</html>
+      <div style="font-size:11px;font-weight:700;color:var(--text2
