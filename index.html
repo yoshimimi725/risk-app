@@ -355,18 +355,42 @@ let curFilter = 'all';
 const d = new Date();
 document.getElementById('today-str').textContent = d.getFullYear()+'年'+(d.getMonth()+1)+'月'+d.getDate()+'日（'+'日月火水木金土'[d.getDay()]+'）';
 
-// ストレージ（localStorage版）
+// ストレージ（Firebase優先・localStorage fallback）
+function getDB(){ return window._firebaseDB || null; }
+
 async function saveRecs(recs){
+  const db = getDB();
+  if(db){
+    try{ await db.ref('records').set(recs); return; }catch(e){ console.warn('Firebase save error:', e); }
+  }
   try{ localStorage.setItem('risk_v4', JSON.stringify(recs)); }catch(e){}
 }
+
 async function loadRecsLocal(){
+  const db = getDB();
+  if(db){
+    try{
+      const snap = await db.ref('records').get();
+      return snap.exists() ? Object.values(snap.val()) : [];
+    }catch(e){ console.warn('Firebase load error:', e); }
+  }
   try{ const d=localStorage.getItem('risk_v4'); return d?JSON.parse(d):[]; }catch(e){ return []; }
 }
+
 function watchRecs(callback){
-  loadRecsLocal().then(data=>{
-    data.sort((a,b)=>b.id-a.id);
-    callback(data);
-  });
+  const db = getDB();
+  if(db){
+    db.ref('records').on('value', snap => {
+      const data = snap.exists() ? Object.values(snap.val()) : [];
+      data.sort((a,b) => b.id - a.id);
+      callback(data);
+    });
+  } else {
+    loadRecsLocal().then(data=>{
+      data.sort((a,b)=>b.id-a.id);
+      callback(data);
+    });
+  }
 }
 
 // ブラウザ通知
@@ -388,18 +412,32 @@ function sendNotify(title, body){
 // Firebaseリアルタイム監視で新着通知
 let lastCount = null;
 function watchNewEntries(){
-  setInterval(async ()=>{
-    const data = await loadRecsLocal();
-    if(lastCount===null){ lastCount=data.length; return; }
-    if(data.length>lastCount){
-      const newest=data.sort((a,b)=>b.id-a.id)[0];
-      sendNotify('📋 新しい記録が入りました',`${newest.floor}　${newest.user}　${newest.category}`);
-      lastCount=data.length;
-    }
-  }, 5000);
+  const db = getDB();
+  if(db){
+    db.ref('records').on('value', snap=>{
+      const data = snap.exists() ? Object.values(snap.val()) : [];
+      if(lastCount===null){ lastCount=data.length; return; }
+      if(data.length>lastCount){
+        const newest=data.sort((a,b)=>b.id-a.id)[0];
+        sendNotify('📋 新しい記録が入りました',`${newest.floor}　${newest.user}　${newest.category}`);
+        lastCount=data.length;
+      }
+    });
+  }
 }
 
-function watchStatusChanges(){ /* localStorage版では省略 */ }
+function watchStatusChanges(){
+  const db = getDB();
+  if(db){
+    db.ref('records').on('child_changed', snap=>{
+      if(!currentUser) return;
+      const r = snap.val();
+      if(r && r.status){
+        sendNotify('🔄 ステータスが更新されました',`${r.user}　${r.category}　→　${r.status}`);
+      }
+    });
+  }
+}
 
 // 定時通知
 function startScheduledNotifications(){
@@ -892,5 +930,14 @@ function closeDetail(e){
 }
 </script>
 
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script>
+try {
+  const firebaseConfig = { databaseURL: "https://risk-app-9ec62-default-rtdb.firebaseio.com" };
+  if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+  window._firebaseDB = firebase.database();
+} catch(e) { console.warn('Firebase init error:', e); window._firebaseDB = null; }
+</script>
 </body>
 </html>
