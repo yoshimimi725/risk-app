@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>リスク早期発見・申し送りアプリ</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#F7F6F2;--surface:#FFFFFF;--border:#E5E3DC;
+  --text:#1A1A1A;--text2:#6B6860;
+  --red-bg:#FEF0EE;--red:#C0392B;--red-border:#F5B7B1;
+  --amber-bg:#FEF9E7;--amber:#D4820A;--amber-border:#F9E79F;
+  --green-bg:#EAFAF1;--green:#1E8449;--green-border:#A9DFBF;
+  --blue-bg:#EBF5FB;--blue:#1A5276;--blue-border:#A9CCE3;
+  --purple-bg:#F5EEF8;--purple:#6C3483;--purple-border:#D2B4DE;
+  --radius:12px;--radius-sm:8px;
+}
+body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+.app{max-width:540px;margin:0 auto;padding:1.25rem 1rem 4rem}
+
+/* ログイン画面 */
+.login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg)}
+.login-box{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:2rem 1.75rem;width:100%;max-width:360px}
+.login-logo{text-align:center;margin-bottom:1.5rem}
+.login-logo h1{font-size:20px;font-weight:700;margin-bottom:4px}
+.login-logo p{font-size:13px;color:var(--text2)}
+.login-field{margin-bottom:14px}
+.login-field label{display:block;font-size:13px;color:var(--text2);margin-bottom:5px;font-weight:500}
+.login-field input,.login-field select{width:100%;font-size:14px;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font-family:inherit}
+.login-field input:focus,.login-field select:focus{outline:none;border-color:#999}
+.login-btn{width:100%;padding:12px;font-size:15px;font-weight:700;background:var(--text);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-family:inherit;margin-top:6px}
+.login-btn:hover{opacity:.85}
+.login-err{background:var(--red-bg);color:var(--red);font-size:13px;padding:8px 12px;border-radius:var(--radius-sm);margin-bottom:12px;display:none;border:1px solid var(--red-border)}
+.login-err.show{display:block}
+
+/* ヘッダー */
+.header{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;padding-bottom:1rem;border-bottom:1px solid var(--border)}
+.header-left h1{font-size:17px;font-weight:700}
+.header-left p{font-size:12px;color:var(--text2);margin-top:2px}
+.header-right{display:flex;align-items:center;gap:10px}
+.role-badge{font-size:12px;font-weight:700;padding:4px 10px;border-radius:20px}
+.role-staff{background:#F0F0F0;color:#555}
+.role-first{background:var(--blue-bg);color:var(--blue)}
+.role-escal{background:var(--purple-bg);color:var(--purple)}
+.logout-btn{font-size:12px;padding:4px 10px;border:1px solid var(--border);border-radius:20px;background:none;color:var(--text2);cursor:pointer;font-family:inherit}
+.logout-btn:hover{background:var(--bg)}
+
+/* タブ */
+.tabs{display:flex;gap:0;margin-bottom:1.25rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:4px}
+.tab{flex:1;padding:8px 4px;font-size:12px;font-weight:500;cursor:pointer;border:none;background:none;color:var(--text2);border-radius:var(--radius-sm);font-family:inherit;transition:all .15s;text-align:center}
+.tab.active{background:var(--text);color:#fff}
+.tab:disabled{opacity:.35;cursor:not-allowed}
+
+/* カード */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1rem 1.125rem;margin-bottom:.875rem}
+.sec-label{font-size:11px;font-weight:700;color:var(--text2);margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px;display:flex;align-items:center;gap:6px}
+.req{background:var(--red-bg);color:var(--red);font-size:10px;padding:2px 6px;border-radius:4px;text-transform:none;letter-spacing:0}
+.field{margin-bottom:12px}
+.field label{display:block;font-size:13px;color:var(--text2);margin-bottom:5px}
+.field input,.field select,.field textarea{width:100%;font-size:14px;padding:9px 11px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font-family:inherit;transition:border .15s}
+.field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:#999}
+.field textarea{min-height:80px;resize:vertical;line-height:1.7}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
+/* リスクグリッド */
+.risk-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.risk-btn{padding:11px 10px;border:1.5px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font-size:13px;font-family:inherit;cursor:pointer;text-align:left;display:flex;align-items:center;gap:7px;transition:all .15s;line-height:1.3}
+.risk-btn:hover{border-color:#bbb}
+.risk-btn.sel{font-weight:700}
+.risk-btn.cat-abuse.sel{background:var(--red-bg);color:var(--red);border-color:var(--red)}
+.risk-btn.cat-complaint.sel{background:var(--amber-bg);color:var(--amber);border-color:var(--amber)}
+.risk-btn.cat-fall.sel{background:var(--blue-bg);color:var(--blue);border-color:var(--blue)}
+.risk-btn.cat-stress.sel{background:var(--purple-bg);color:var(--purple);border-color:var(--purple)}
+.risk-btn.cat-words.sel{background:var(--amber-bg);color:var(--amber);border-color:var(--amber)}
+.risk-btn.cat-health.sel{background:var(--blue-bg);color:var(--blue);border-color:var(--blue)}
+.risk-btn.cat-other.sel{background:#F0F0F0;color:#555;border-color:#aaa}
+
+/* 重要度 */
+.level-row{display:flex;gap:8px}
+.lv-btn{flex:1;padding:9px;border:1.5px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);font-size:13px;font-family:inherit;cursor:pointer;text-align:center;transition:all .15s}
+.lv-btn:hover{border-color:#bbb}
+.lv-low.sel{background:var(--green-bg);color:var(--green);border-color:var(--green);font-weight:700}
+.lv-mid.sel{background:var(--amber-bg);color:var(--amber);border-color:var(--amber);font-weight:700}
+.lv-high.sel{background:var(--red-bg);color:var(--red);border-color:var(--red);font-weight:700}
+
+/* タスク */
+.task-add{display:flex;gap:8px;margin-bottom:10px}
+.task-add input{flex:1;font-size:14px;padding:9px 11px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font-family:inherit}
+.task-add-btn{padding:9px 14px;font-size:13px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--text2);cursor:pointer;font-family:inherit;white-space:nowrap}
+.task-add-btn:hover{background:var(--bg)}
+.task-item{display:flex;align-items:center;gap:9px;padding:9px 11px;border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:6px;font-size:14px}
+.task-item input[type=checkbox]{width:16px;height:16px;flex-shrink:0}
+.task-del{margin-left:auto;background:none;border:none;color:var(--text2);cursor:pointer;font-size:18px;line-height:1}
+
+/* ボタン */
+.btn-primary{width:100%;padding:13px;font-size:15px;font-weight:700;background:var(--text);color:#fff;border:none;border-radius:var(--radius);cursor:pointer;font-family:inherit;transition:opacity .15s}
+.btn-primary:hover{opacity:.85}
+.btn-sm{padding:6px 12px;font-size:13px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--text2);cursor:pointer;font-family:inherit}
+.btn-sm:hover{background:var(--bg)}
+.toast{background:var(--green-bg);border:1px solid var(--green-border);border-radius:var(--radius-sm);padding:11px 14px;font-size:14px;color:var(--green);display:none;margin-bottom:1rem;font-weight:500}
+.toast.show{display:block}
+
+/* 一覧 */
+.top-bar{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem}
+.top-bar p{font-size:13px;color:var(--text2)}
+.filter-row{display:flex;gap:6px;margin-bottom:1rem;flex-wrap:wrap}
+.f-btn{padding:5px 12px;font-size:12px;font-weight:500;border:1px solid var(--border);border-radius:20px;background:var(--surface);color:var(--text2);cursor:pointer;font-family:inherit;transition:all .15s}
+.f-btn.active{background:var(--text);color:#fff;border-color:var(--text)}
+.rec-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1rem 1.125rem;margin-bottom:.75rem;cursor:pointer;transition:box-shadow .15s}
+.rec-card:hover{box-shadow:0 2px 8px rgba(0,0,0,.08)}
+.rec-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:7px}
+.rec-name{font-size:15px;font-weight:700}
+.rec-sub{font-size:12px;color:var(--text2);margin-top:2px}
+.badge{display:inline-flex;align-items:center;gap:3px;font-size:11px;font-weight:700;padding:3px 8px;border-radius:20px}
+.b-red{background:var(--red-bg);color:var(--red)}
+.b-amber{background:var(--amber-bg);color:var(--amber)}
+.b-green{background:var(--green-bg);color:var(--green)}
+.b-blue{background:var(--blue-bg);color:var(--blue)}
+.b-purple{background:var(--purple-bg);color:var(--purple)}
+.b-gray{background:#F0F0F0;color:#666}
+.tags{display:flex;gap:5px;flex-wrap:wrap;margin-top:8px}
+.prog{margin-top:9px;padding:8px 10px;background:var(--bg);border-radius:var(--radius-sm);font-size:12px;color:var(--text2)}
+.prog-bar{height:3px;background:var(--border);border-radius:2px;margin-top:5px;overflow:hidden}
+.prog-fill{height:100%;background:var(--green);border-radius:2px}
+
+/* ステータス進行バー */
+.flow-bar{display:flex;align-items:center;gap:0;margin-bottom:1rem;overflow-x:auto;padding-bottom:4px}
+.flow-step{display:flex;align-items:center;gap:0;flex-shrink:0}
+.flow-dot{width:28px;height:28px;border-radius:50%;border:2px solid var(--border);background:var(--surface);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--text2);flex-shrink:0}
+.flow-dot.done{background:var(--green);border-color:var(--green);color:#fff}
+.flow-dot.current{background:var(--text);border-color:var(--text);color:#fff}
+.flow-line{width:20px;height:2px;background:var(--border);flex-shrink:0}
+.flow-line.done{background:var(--green)}
+.flow-label{font-size:10px;color:var(--text2);text-align:center;margin-top:3px;white-space:nowrap}
+.flow-wrap{display:flex;flex-direction:column;align-items:center}
+
+/* 承認・コメントエリア */
+.approve-box{border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;margin-bottom:10px}
+.approve-title{font-size:13px;font-weight:700;margin-bottom:8px;color:var(--text2)}
+.approve-btns{display:flex;gap:8px;margin-bottom:10px}
+.ap-btn{flex:1;padding:9px;border:1.5px solid var(--border);border-radius:var(--radius-sm);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;transition:all .15s;background:var(--bg)}
+.ap-btn.sel-ok{background:var(--green-bg);color:var(--green);border-color:var(--green)}
+.ap-btn.sel-escal{background:var(--purple-bg);color:var(--purple);border-color:var(--purple)}
+.ap-btn.sel-ng{background:var(--red-bg);color:var(--red);border-color:var(--red)}
+
+/* 未来予想図チェック */
+.mirai-box{border:2px solid var(--amber);border-radius:var(--radius-sm);padding:12px;background:var(--amber-bg);margin-bottom:10px}
+.mirai-check{display:flex;align-items:center;gap:10px;cursor:pointer;font-size:14px;font-weight:700;color:var(--amber)}
+.mirai-check input{width:18px;height:18px;flex-shrink:0}
+
+/* 詳細モーダル */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;display:none;align-items:flex-end;justify-content:center}
+.overlay.show{display:flex}
+.sheet{background:var(--surface);border-radius:20px 20px 0 0;width:100%;max-width:540px;max-height:88vh;overflow-y:auto;padding:1.5rem 1.25rem 2rem}
+.sheet-close{float:right;background:none;border:none;font-size:22px;cursor:pointer;color:var(--text2);margin-top:-4px}
+.status-row{display:flex;gap:6px;margin:8px 0 12px}
+.st-btn{flex:1;padding:8px 4px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;transition:all .15s}
+.st-btn.active-未報告{background:#F0F0F0;color:#555;border-color:#aaa}
+.st-btn.active-第一報確認待ち{background:var(--blue-bg);color:var(--blue);border-color:var(--blue)}
+.st-btn.active-エスカレーション中{background:var(--purple-bg);color:var(--purple);border-color:var(--purple)}
+.st-btn.active-タスク化済{background:var(--amber-bg);color:var(--amber);border-color:var(--amber)}
+.st-btn.active-未来予想図反映済{background:var(--green-bg);color:var(--green);border-color:var(--green)}
+.empty{text-align:center;padding:3rem;color:var(--text2);font-size:14px}
+.comment-item{padding:9px 11px;border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:6px;font-size:13px;line-height:1.6}
+.comment-meta{font-size:11px;color:var(--text2);margin-bottom:3px;font-weight:700}
+</style>
+</head>
+<body>
+
+<!-- ログイン画面 -->
+<div class="login-screen" id="login-screen">
+  <div class="login-box">
+    <div class="login-logo">
+      <h1>🛡️ リスク早期発見</h1>
+      <p>申し送り・共有アプリ</p>
+    </div>
+    <div id="login-err" class="login-err">ユーザー名またはパスワードが違います</div>
+    <div class="login-field">
+      <label>ユーザー名</label>
+      <select id="login-user">
+        <option value="">選択してください</option>
+        <option value="staff">職員（全員）</option>
+        <option value="yasui">安井</option>
+        <option value="ueda">植田</option>
+        <option value="kamehashi">亀橋</option>
+        <option value="morikawa">森川</option>
+      </select>
+    </div>
+    <div class="login-field">
+      <label>パスワード</label>
+      <input type="password" id="login-pass" placeholder="パスワードを入力" onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <button class="login-btn" onclick="doLogin()">ログイン</button>
+    <p style="font-size:11px;color:var(--text2);margin-top:12px;text-align:center">※ パスワードは管理者にご確認ください</p>
+  </div>
+</div>
+
+<!-- メイン画面 -->
+<div class="app" id="main-app" style="display:none">
+  <div class="header">
+    <div class="header-left">
+      <h1>🛡️ リスク早期発見</h1>
+      <p id="today-str"></p>
+    </div>
+    <div class="header-right">
+      <span class="role-badge" id="role-badge"></span>
+      <button class="logout-btn" onclick="doLogout()">ログアウト</button>
+    </div>
+  </div>
+
+  <div class="tabs" id="main-tabs">
+    <button class="tab active" id="tab-btn-input" onclick="goTab('input')">📝 記録</button>
+    <button class="tab" id="tab-btn-list" onclick="goTab('list')">📋 一覧</button>
+    <button class="tab" id="tab-btn-approve" onclick="goTab('approve')">✅ 確認</button>
+    <button class="tab" id="tab-btn-task" onclick="goTab('task')">🎯 タスク</button>
+  </div>
+
+  <!-- 記録タブ -->
+  <div id="tab-input">
+    <div id="toast" class="toast">✅ 記録・報告しました</div>
+    <div class="card">
+      <div class="sec-label">👤 基本情報 <span class="req">必須</span></div>
+      <div class="row2">
+        <div class="field"><label>利用者名</label><input type="text" id="f-user" placeholder="例：山田 花子"></div>
+        <div class="field"><label>報告者名</label><input type="text" id="f-staff" placeholder="例：鈴木"></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>部署</label>
+          <select id="f-floor">
+            <option value="">選択してください</option>
+            <option>本館２階</option><option>本館３階</option><option>本館４階</option>
+            <option>新館２階</option><option>新館３階</option>
+            <option>通所</option><option>訪問介護</option><option>予防</option>
+            <option>相談</option><option>居宅</option>
+          </select>
+        </div>
+        <div class="field"><label>発生日時</label><input type="datetime-local" id="f-datetime"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="sec-label">⚠️ リスクの種類 <span class="req">必須</span></div>
+      <div class="risk-grid">
+        <button class="risk-btn cat-abuse" onclick="selRisk(this,'虐待リスク')">🚨 虐待リスク</button>
+        <button class="risk-btn cat-complaint" onclick="selRisk(this,'苦情・クレーム')">😞 苦情・クレーム</button>
+        <button class="risk-btn cat-fall" onclick="selRisk(this,'転倒・インシデント')">🩹 転倒・インシデント</button>
+        <button class="risk-btn cat-stress" onclick="selRisk(this,'スタッフストレス')">💛 スタッフストレス</button>
+        <button class="risk-btn cat-words" onclick="selRisk(this,'言葉遣い・態度')">💬 言葉遣い・態度</button>
+        <button class="risk-btn cat-health" onclick="selRisk(this,'健康・体調変化')">📊 健康・体調変化</button>
+        <button class="risk-btn cat-other" onclick="selRisk(this,'その他')">・・・ その他</button>
+      </div>
+      <input type="hidden" id="f-category" value="">
+    </div>
+
+    <div class="card">
+      <div class="sec-label">🔴 重要度</div>
+      <div class="level-row">
+        <button class="lv-btn lv-low" id="lv-low" onclick="selLevel('low')">🟢 低</button>
+        <button class="lv-btn lv-mid" id="lv-mid" onclick="selLevel('mid')">🟡 中</button>
+        <button class="lv-btn lv-high" id="lv-high" onclick="selLevel('high')">🔴 高</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="sec-label">📝 詳細内容</div>
+      <div class="field"><label>何が起きたか・気になったこと</label>
+        <textarea id="f-detail" placeholder="例：入浴介助中に利用者様が「怖い」と発言。スタッフAの声かけが強めだった。"></textarea>
+      </div>
+      <div class="field"><label>すでに取った対応</label>
+        <textarea id="f-action" placeholder="例：スタッフAに声かけの確認を行った。"></textarea>
+      </div>
+    </div>
+
+    <button class="btn-primary" onclick="submitRecord()">📤 安井・植田に報告する</button>
+  </div>
+
+  <!-- 一覧タブ -->
+  <div id="tab-list" style="display:none">
+    <div class="top-bar">
+      <p id="last-upd">読み込み中...</p>
+      <button class="btn-sm" onclick="loadRecs()">🔄 更新</button>
+    </div>
+    <div class="filter-row">
+      <button class="f-btn active" onclick="setF('all',this)">すべて</button>
+      <button class="f-btn" onclick="setF('第一報確認待ち',this)">🔵 確認待ち</button>
+      <button class="f-btn" onclick="setF('エスカレーション中',this)">🟣 対応中</button>
+      <button class="f-btn" onclick="setF('タスク化済',this)">🟡 タスク化済</button>
+      <button class="f-btn" onclick="setF('未来予想図反映済',this)">🟢 完了</button>
+      <button class="f-btn" onclick="setF('虐待リスク',this)">🚨 虐待</button>
+    </div>
+    <div id="rec-list"></div>
+  </div>
+
+  <!-- 確認タブ（安井・植田・亀橋・森川用） -->
+  <div id="tab-approve" style="display:none">
+    <div class="top-bar">
+      <p id="approve-upd">読み込み中...</p>
+      <button class="btn-sm" onclick="loadApprove()">🔄 更新</button>
+    </div>
+    <div id="approve-list"></div>
+  </div>
+
+  <!-- タスクタブ（亀橋・森川用） -->
+  <div id="tab-task" style="display:none">
+    <div class="top-bar">
+      <p id="task-upd">読み込み中...</p>
+      <button class="btn-sm" onclick="loadTasks()">🔄 更新</button>
+    </div>
+    <div id="task-list-main"></div>
+  </div>
+</div>
+
+<!-- 詳細モーダル -->
+<div class="overlay" id="overlay" onclick="closeDetail(event)">
+  <div class="sheet" id="sheet"></div>
+</div>
+
+<script>
+const STORAGE_KEY = 'risk_v4';
+
+// パスワード設定（後で変更可能）
+const PASSWORDS = {
+  staff:     '1234',
+  yasui:     'yasui2024',
+  ueda:      'ueda2024',
+  kamehashi: 'kame2024',
+  morikawa:  'mori2024'
+};
+
+const ROLES = {
+  staff:     {label:'職員',    cls:'role-staff',  level:1},
+  yasui:     {label:'安井（第一報）',  cls:'role-first',  level:3},
+  ueda:      {label:'植田（第一報）',  cls:'role-first',  level:3},
+  kamehashi: {label:'亀橋（管理）',cls:'role-escal', level:3},
+  morikawa:  {label:'森川（管理）',cls:'role-escal', level:3}
+};
+
+let currentUser = null;
+let allRecs = [];
+let curFilter = 'all';
+
+// 日付
+const d = new Date();
+document.getElementById('today-str').textContent = d.getFullYear()+'年'+(d.getMonth()+1)+'月'+d.getDate()+'日（'+'日月火水木金土'[d.getDay()]+'）';
+
+// ストレージ
+function saveRecs(recs){ try{localStorage.setItem(STORAGE_KEY,JSON.stringify(recs));}catch(e){} }
+function loadRecsLocal(){ try{const d=localStorage.getItem(STORAGE_KEY);return d?JSON.parse(d):[]; }catch(e){return[];} }
+
+// ログイン
+function doLogin(){
+  const u = document.getElementById('login-user').value;
+  const p = document.getElementById('login-pass').value;
+  if(!u){ document.getElementById('login-err').classList.add('show'); return; }
+  if(PASSWORDS[u] !== p){ document.getElementById('login-err').classList.add('show'); return; }
+  currentUser = u;
+  document.getElementById('login-err').classList.remove('show');
+  document.getElementById('login-screen').style.display='none';
+  document.getElementById('main-app').style.display='block';
+  const role = ROLES[u];
+  const badge = document.getElementById('role-badge');
+  badge.textContent = role.label;
+  badge.className = 'role-badge ' + role.cls;
+  // タブ制御
+  const level = role.level;
+  document.getElementById('tab-btn-approve').disabled = level < 2;
+  document.getElementById('tab-btn-task').disabled = level < 3;
+  document.getElementById('f-datetime').value = new Date().toISOString().slice(0,16);
+  selLevel('mid');
+  loadRecs();
+}
+
+function doLogout(){
+  currentUser = null;
+  document.getElementById('login-screen').style.display='flex';
+  document.getElementById('main-app').style.display='none';
+  document.getElementById('login-user').value='';
+  document.getElementById('login-pass').value='';
+}
+
+// タブ切替
+function goTab(t){
+  ['input','list','approve','task'].forEach(id=>{
+    document.getElementById('tab-'+id).style.display = t===id?'block':'none';
+    document.getElementById('tab-btn-'+id)?.classList.toggle('active', t===id);
+  });
+  if(t==='list') loadRecs();
+  if(t==='approve') loadApprove();
+  if(t==='task') loadTasks();
+}
+
+// リスク・重要度選択
+function selRisk(btn, cat){
+  document.querySelectorAll('.risk-btn').forEach(b=>b.classList.remove('sel'));
+  btn.classList.add('sel');
+  document.getElementById('f-category').value = cat;
+  if(cat==='虐待リスク') selLevel('high');
+}
+function selLevel(lv){
+  window._level = lv;
+  ['low','mid','high'].forEach(l=>{
+    const el=document.getElementById('lv-'+l);
+    el.className='lv-btn lv-'+l+(l===lv?' sel':'');
+  });
+}
+
+// 記録送信
+function submitRecord(){
+  const user=document.getElementById('f-user').value.trim();
+  const staff=document.getElementById('f-staff').value.trim();
+  const floor=document.getElementById('f-floor').value;
+  const cat=document.getElementById('f-category').value;
+  if(!user||!staff||!floor||!cat){alert('利用者名・報告者・部署・リスクの種類は必須です');return;}
+  const rec={
+    id:Date.now(), user, staff, floor,
+    category:cat, level:window._level||'mid',
+    datetime:document.getElementById('f-datetime').value,
+    detail:document.getElementById('f-detail').value,
+    action:document.getElementById('f-action').value,
+    status:'第一報確認待ち',
+    comments:[], tasks:[], miraiReflected:false,
+    ts:new Date().toISOString()
+  };
+  const recs=loadRecsLocal();
+  recs.unshift(rec);
+  if(recs.length>200) recs.length=200;
+  saveRecs(recs);
+  document.getElementById('toast').classList.add('show');
+  setTimeout(()=>document.getElementById('toast').classList.remove('show'),3000);
+  ['f-user','f-staff','f-detail','f-action'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('f-floor').value='';
+  document.getElementById('f-category').value='';
+  document.getElementById('f-datetime').value=new Date().toISOString().slice(0,16);
+  document.querySelectorAll('.risk-btn').forEach(b=>b.classList.remove('sel'));
+  selLevel('mid');
+}
+
+// フィルター
+function setF(f,btn){
+  curFilter=f;
+  document.querySelectorAll('.f-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  renderRecs();
+}
+
+const catColor={'虐待リスク':'b-red','苦情・クレーム':'b-amber','転倒・インシデント':'b-blue','スタッフストレス':'b-purple','言葉遣い・態度':'b-amber','健康・体調変化':'b-blue','その他':'b-gray'};
+const lvLabel={low:'🟢 低',mid:'🟡 中',high:'🔴 高'};
+
+const STATUS_FLOW = ['第一報確認待ち','エスカレーション中','タスク化済','未来予想図反映済'];
+const STATUS_BADGE = {
+  '第一報確認待ち':'b-blue','エスカレーション中':'b-purple',
+  'タスク化済':'b-amber','未来予想図反映済':'b-green'
+};
+
+function flowBar(status){
+  const steps=['第一報確認','エスカレーション','タスク化','未来予想図'];
+  const idx=STATUS_FLOW.indexOf(status);
+  return `<div class="flow-bar">`+steps.map((s,i)=>{
+    const cls=i<idx?'done':i===idx?'current':'';
+    return `<div class="flow-wrap"><div class="flow-dot ${cls}">${i+1}</div><div class="flow-label">${s}</div></div>${i<steps.length-1?`<div class="flow-line${i<idx?' done':''}"></div>`:''}`;
+  }).join('')+`</div>`;
+}
+
+function loadRecs(){
+  document.getElementById('last-upd').textContent='更新中...';
+  allRecs=loadRecsLocal();
+  renderRecs();
+  const n=new Date();
+  document.getElementById('last-upd').textContent='最終更新：'+n.getHours()+':'+String(n.getMinutes()).padStart(2,'0');
+}
+
+function renderRecs(){
+  const el=document.getElementById('rec-list');
+  let list=allRecs;
+  if(curFilter==='虐待リスク') list=allRecs.filter(r=>r.category==='虐待リスク');
+  else if(curFilter!=='all') list=allRecs.filter(r=>r.status===curFilter);
+  if(!list.length){
+    el.innerHTML=`<div class="empty">📋<br><br>${allRecs.length===0?'まだ記録がありません':'該当する記録がありません'}</div>`;
+    return;
+  }
+  el.innerHTML=list.map(r=>{
+    const dt=r.datetime?r.datetime.replace('T',' ').slice(0,16):'';
+    return `<div class="rec-card" onclick="openDetail('${r.id}')">
+      <div class="rec-head">
+        <div><div class="rec-name">${r.user} <span style="font-size:13px;font-weight:400;color:var(--text2)">/ ${r.floor}</span></div>
+        <div class="rec-sub">${dt}　報告：${r.staff}</div></div>
+        <span class="badge ${STATUS_BADGE[r.status]||'b-gray'}">${r.status||''}</span>
+      </div>
+      ${r.detail?`<div style="font-size:13px;color:var(--text2)">${r.detail.slice(0,60)}${r.detail.length>60?'…':''}</div>`:''}
+      <div class="tags">
+        <span class="badge ${catColor[r.category]||'b-gray'}">${r.category}</span>
+        <span class="badge b-gray">${lvLabel[r.level]||''}</span>
+        ${r.miraiReflected?'<span class="badge b-green">✅ 未来予想図反映済</span>':''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// 確認タブ（安井・植田・亀橋・森川）
+function loadApprove(){
+  if(!currentUser||ROLES[currentUser].level<2){
+    document.getElementById('approve-list').innerHTML='<div class="empty">権限がありません</div>';return;
+  }
+  document.getElementById('approve-upd').textContent='更新中...';
+  allRecs=loadRecsLocal();
+  const level=ROLES[currentUser].level;
+  // 第一報：安井・植田は「第一報確認待ち」を表示
+  // エスカレーション：亀橋・森川は「エスカレーション中」も表示
+  const targets = level===2
+    ? allRecs.filter(r=>r.status==='第一報確認待ち')
+    : allRecs.filter(r=>['第一報確認待ち','エスカレーション中'].includes(r.status));
+  const el=document.getElementById('approve-list');
+  if(!targets.length){el.innerHTML='<div class="empty">確認待ちの記録はありません 👍</div>';return;}
+  el.innerHTML=targets.map(r=>{
+    const dt=r.datetime?r.datetime.replace('T',' ').slice(0,16):'';
+    return `<div class="rec-card" onclick="openDetail('${r.id}')">
+      ${flowBar(r.status)}
+      <div class="rec-head">
+        <div><div class="rec-name">${r.user} <span style="font-size:13px;font-weight:400;color:var(--text2)">/ ${r.floor}</span></div>
+        <div class="rec-sub">${dt}　報告：${r.staff}</div></div>
+        <span class="badge ${STATUS_BADGE[r.status]||'b-gray'}">${r.status}</span>
+      </div>
+      ${r.detail?`<div style="font-size:13px;color:var(--text2);margin-bottom:6px">${r.detail.slice(0,80)}${r.detail.length>80?'…':''}</div>`:''}
+      <div class="tags">
+        <span class="badge ${catColor[r.category]||'b-gray'}">${r.category}</span>
+        <span class="badge b-gray">${lvLabel[r.level]||''}</span>
+      </div>
+      <p style="font-size:12px;color:var(--blue);margin-top:8px;font-weight:700">タップして対応 →</p>
+    </div>`;
+  }).join('');
+  const n=new Date();
+  document.getElementById('approve-upd').textContent='最終更新：'+n.getHours()+':'+String(n.getMinutes()).padStart(2,'0');
+}
+
+// タスクタブ（亀橋・森川）
+function loadTasks(){
+  if(!currentUser||ROLES[currentUser].level<3){
+    document.getElementById('task-list-main').innerHTML='<div class="empty">権限がありません</div>';return;
+  }
+  allRecs=loadRecsLocal();
+  const targets=allRecs.filter(r=>r.status==='タスク化済'&&!r.miraiReflected);
+  const el=document.getElementById('task-list-main');
+  if(!targets.length){el.innerHTML='<div class="empty">タスク対応中の記録はありません 👍</div>';return;}
+  el.innerHTML=targets.map(r=>{
+    const done=r.tasks?r.tasks.filter(t=>t.done).length:0;
+    const total=r.tasks?r.tasks.length:0;
+    const pct=total>0?Math.round(done/total*100):0;
+    return `<div class="rec-card" onclick="openDetail('${r.id}')">
+      ${flowBar(r.status)}
+      <div class="rec-name" style="margin-bottom:4px">${r.user} <span style="font-size:13px;font-weight:400;color:var(--text2)">/ ${r.floor}</span></div>
+      <div class="tags" style="margin-bottom:8px">
+        <span class="badge ${catColor[r.category]||'b-gray'}">${r.category}</span>
+        ${r.miraiReflected?'<span class="badge b-green">✅ 未来予想図反映済</span>':'<span class="badge b-amber">⏳ 未来予想図 未反映</span>'}
+      </div>
+      ${total>0?`<div class="prog">✅ タスク ${done}/${total} 完了<div class="prog-bar"><div class="prog-fill" style="width:${pct}%"></div></div></div>`:'<p style="font-size:13px;color:var(--text2)">タスク未登録</p>'}
+    </div>`;
+  }).join('');
+  const n=new Date();
+  document.getElementById('task-upd').textContent='最終更新：'+n.getHours()+':'+String(n.getMinutes()).padStart(2,'0');
+}
+
+// 詳細モーダル
+function openDetail(id){
+  const r=allRecs.find(x=>String(x.id)===String(id));
+  if(!r) return;
+  const dt=r.datetime?r.datetime.replace('T',' ').slice(0,16):'';
+  const level=currentUser?ROLES[currentUser].level:1;
+  const canApprove=level>=2;
+  const canTask=level>=3;
+
+  // コメント欄
+  const commentsHtml=r.comments&&r.comments.length
+    ?r.comments.map(c=>`<div class="comment-item"><div class="comment-meta">${c.user}　${c.time}</div>${c.text}</div>`).join('')
+    :'<p style="font-size:13px;color:var(--text2)">コメントはまだありません</p>';
+
+  // タスク
+  const tasksHtml=r.tasks&&r.tasks.length
+    ?r.tasks.map(t=>`<div class="task-item" style="margin-bottom:6px">
+        <input type="checkbox" ${t.done?'checked':''} onchange="toggleRecTask('${r.id}',${t.id})" style="width:16px;height:16px" ${canTask?'':'disabled'}>
+        <span style="${t.done?'text-decoration:line-through;color:var(--text2)':''};font-size:14px">${t.text}</span>
+      </div>`).join('')
+    :'<p style="font-size:13px;color:var(--text2)">タスクはまだありません</p>';
+
+  document.getElementById('sheet').innerHTML=`
+    <button class="sheet-close" onclick="document.getElementById('overlay').classList.remove('show')">×</button>
+    <h2 style="font-size:17px;font-weight:700;margin-bottom:3px">${r.user}</h2>
+    <p style="font-size:13px;color:var(--text2);margin-bottom:10px">${r.floor} / ${dt} / 報告：${r.staff}</p>
+    ${flowBar(r.status)}
+    <div class="tags" style="margin-bottom:14px">
+      <span class="badge ${catColor[r.category]||'b-gray'}">${r.category}</span>
+      <span class="badge b-gray">${lvLabel[r.level]||''}</span>
+      <span class="badge ${STATUS_BADGE[r.status]||'b-gray'}">${r.status}</span>
+    </div>
+    ${r.detail?`<div style="margin-bottom:10px"><div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px">詳細内容</div><div style="font-size:14px;line-height:1.7">${r.detail}</div></div>`:''}
+    ${r.action?`<div style="margin-bottom:12px"><div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px">取った対応</div><div style="font-size:14px;line-height:1.7">${r.action}</div></div>`:''}
+
+    ${canApprove?`
+    <div style="margin-bottom:14px">
+      <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">ステータス変更</div>
+      <div class="status-row" style="flex-wrap:wrap">
+        ${STATUS_FLOW.map(s=>`<button class="st-btn ${r.status===s?'active-'+s:''}" onclick="updStatus('${r.id}','${s}')" style="min-width:80px;margin-bottom:4px">${s}</button>`).join('')}
+      </div>
+    </div>`:''}
+
+    <div style="margin-bottom:14px">
+      <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">コメント・引き継ぎ</div>
+      ${commentsHtml}
+      ${canApprove?`
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <input type="text" id="comment-input" placeholder="コメントを入力" style="flex:1;font-size:14px;padding:9px 11px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font-family:inherit">
+        <button onclick="addComment('${r.id}')" class="btn-sm">送信</button>
+      </div>`:''}
+    </div>
+
+    ${canTask?`
+    <div style="margin-bottom:14px">
+      <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">対応タスク</div>
+      <div id="sheet-tasks">${tasksHtml}</div>
+      <div class="task-add" style="margin-top:8px">
+        <input type="text" id="sheet-task-input" placeholder="タスクを追加" style="flex:1;font-size:14px;padding:9px 11px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font-family:inherit" onkeydown="if(event.key==='Enter')addRecTask('${r.id}')">
+        <button onclick="addRecTask('${r.id}')" class="task-add-btn">＋ 追加</button>
+      </div>
+    </div>
+    <div class="mirai-box" style="margin-bottom:14px">
+      <label class="mirai-check">
+        <input type="checkbox" ${r.miraiReflected?'checked':''} onchange="toggleMirai('${r.id}')">
+        📅 未来予想図に反映済
+      </label>
+    </div>`:''}
+  `;
+  document.getElementById('overlay').classList.add('show');
+}
+
+function updStatus(id,status){
+  const recs=loadRecsLocal();
+  const idx=recs.findIndex(r=>String(r.id)===String(id));
+  if(idx>-1){recs[idx].status=status;saveRecs(recs);}
+  allRecs=recs;
+  document.getElementById('overlay').classList.remove('show');
+  loadRecs();loadApprove();loadTasks();
+}
+
+function addComment(id){
+  const inp=document.getElementById('comment-input');
+  const text=inp.value.trim();
+  if(!text) return;
+  const recs=loadRecsLocal();
+  const rec=recs.find(r=>String(r.id)===String(id));
+  if(rec){
+    if(!rec.comments) rec.comments=[];
+    const n=new Date();
+    rec.comments.push({user:ROLES[currentUser].label,text,time:n.getHours()+':'+String(n.getMinutes()).padStart(2,'0')});
+    saveRecs(recs);allRecs=recs;
+  }
+  openDetail(id);
+}
+
+function addRecTask(id){
+  const inp=document.getElementById('sheet-task-input');
+  const val=inp.value.trim();
+  if(!val) return;
+  const recs=loadRecsLocal();
+  const rec=recs.find(r=>String(r.id)===String(id));
+  if(rec){if(!rec.tasks)rec.tasks=[];rec.tasks.push({id:Date.now(),text:val,done:false});saveRecs(recs);allRecs=recs;}
+  openDetail(id);loadTasks();
+}
+
+function toggleRecTask(recId,taskId){
+  const recs=loadRecsLocal();
+  const rec=recs.find(r=>String(r.id)===String(recId));
+  if(rec&&rec.tasks){rec.tasks=rec.tasks.map(t=>t.id===taskId?{...t,done:!t.done}:t);saveRecs(recs);allRecs=recs;}
+  openDetail(recId);loadTasks();
+}
+
+function toggleMirai(id){
+  const recs=loadRecsLocal();
+  const rec=recs.find(r=>String(r.id)===String(id));
+  if(rec){
+    rec.miraiReflected=!rec.miraiReflected;
+    if(rec.miraiReflected) rec.status='未来予想図反映済';
+    saveRecs(recs);allRecs=recs;
+  }
+  openDetail(id);loadRecs();loadTasks();
+}
+
+function closeDetail(e){
+  if(e.target===document.getElementById('overlay'))
+    document.getElementById('overlay').classList.remove('show');
+}
+</script>
+</body>
+</html>
