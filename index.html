@@ -4,6 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>リスク早期発見・申し送りアプリ</title>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script>
+  const firebaseConfig = { databaseURL: "https://risk-app-9ec62-default-rtdb.firebaseio.com" };
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
+</script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap');
 *{box-sizing:border-box;margin:0;padding:0}
@@ -345,9 +352,24 @@ let curFilter = 'all';
 const d = new Date();
 document.getElementById('today-str').textContent = d.getFullYear()+'年'+(d.getMonth()+1)+'月'+d.getDate()+'日（'+'日月火水木金土'[d.getDay()]+'）';
 
-// ストレージ
-function saveRecs(recs){ try{localStorage.setItem(STORAGE_KEY,JSON.stringify(recs));}catch(e){} }
-function loadRecsLocal(){ try{const d=localStorage.getItem(STORAGE_KEY);return d?JSON.parse(d):[]; }catch(e){return[];} }
+// Firebase ストレージ
+async function saveRecs(recs){
+  try{ await db.ref('records').set(recs); }catch(e){ console.error('保存エラー',e); }
+}
+async function loadRecsLocal(){
+  try{
+    const snap = await db.ref('records').get();
+    return snap.exists() ? Object.values(snap.val()) : [];
+  }catch(e){ return []; }
+}
+// リアルタイム監視
+function watchRecs(callback){
+  db.ref('records').on('value', snap => {
+    const data = snap.exists() ? Object.values(snap.val()) : [];
+    data.sort((a,b) => b.id - a.id);
+    callback(data);
+  });
+}
 
 // ログイン
 function doLogin(){
@@ -407,7 +429,7 @@ function selLevel(lv){
 }
 
 // 記録送信
-function submitRecord(){
+async function submitRecord(){
   const user=document.getElementById('f-user').value.trim();
   const staff=document.getElementById('f-staff').value.trim();
   const floor=document.getElementById('f-floor').value;
@@ -423,10 +445,10 @@ function submitRecord(){
     comments:[], tasks:[], miraiReflected:false,
     ts:new Date().toISOString()
   };
-  const recs=loadRecsLocal();
+  const recs=await loadRecsLocal();
   recs.unshift(rec);
   if(recs.length>200) recs.length=200;
-  saveRecs(recs);
+  await saveRecs(recs);
   document.getElementById('toast').classList.add('show');
   setTimeout(()=>document.getElementById('toast').classList.remove('show'),3000);
   ['f-user','f-staff','f-detail','f-action'].forEach(id=>document.getElementById(id).value='');
@@ -465,10 +487,12 @@ function flowBar(status){
 
 function loadRecs(){
   document.getElementById('last-upd').textContent='更新中...';
-  allRecs=loadRecsLocal();
-  renderRecs();
-  const n=new Date();
-  document.getElementById('last-upd').textContent='最終更新：'+n.getHours()+':'+String(n.getMinutes()).padStart(2,'0');
+  watchRecs(recs => {
+    allRecs = recs;
+    renderRecs();
+    const n=new Date();
+    document.getElementById('last-upd').textContent='最終更新：'+n.getHours()+':'+String(n.getMinutes()).padStart(2,'0');
+  });
 }
 
 function renderRecs(){
@@ -499,12 +523,12 @@ function renderRecs(){
 }
 
 // 確認タブ（安井・植田・亀橋・森川）
-function loadApprove(){
+async function loadApprove(){
   if(!currentUser||ROLES[currentUser].level<2){
     document.getElementById('approve-list').innerHTML='<div class="empty">権限がありません</div>';return;
   }
   document.getElementById('approve-upd').textContent='更新中...';
-  allRecs=loadRecsLocal();
+  allRecs=await loadRecsLocal();
   const level=ROLES[currentUser].level;
   // 第一報：安井・植田は「第一報確認待ち」を表示
   // エスカレーション：亀橋・森川は「エスカレーション中」も表示
@@ -535,11 +559,11 @@ function loadApprove(){
 }
 
 // タスクタブ（亀橋・森川）
-function loadTasks(){
+async function loadTasks(){
   if(!currentUser||ROLES[currentUser].level<3){
     document.getElementById('task-list-main').innerHTML='<div class="empty">権限がありません</div>';return;
   }
-  allRecs=loadRecsLocal();
+  allRecs=await loadRecsLocal();
   const targets=allRecs.filter(r=>r.status==='タスク化済'&&!r.miraiReflected);
   const el=document.getElementById('task-list-main');
   if(!targets.length){el.innerHTML='<div class="empty">タスク対応中の記録はありません 👍</div>';return;}
@@ -633,54 +657,54 @@ function openDetail(id){
   document.getElementById('overlay').classList.add('show');
 }
 
-function updStatus(id,status){
-  const recs=loadRecsLocal();
+async function updStatus(id,status){
+  const recs=await loadRecsLocal();
   const idx=recs.findIndex(r=>String(r.id)===String(id));
-  if(idx>-1){recs[idx].status=status;saveRecs(recs);}
+  if(idx>-1){recs[idx].status=status;await saveRecs(recs);}
   allRecs=recs;
   document.getElementById('overlay').classList.remove('show');
   loadRecs();loadApprove();loadTasks();
 }
 
-function addComment(id){
+async function addComment(id){
   const inp=document.getElementById('comment-input');
   const text=inp.value.trim();
   if(!text) return;
-  const recs=loadRecsLocal();
+  const recs=await loadRecsLocal();
   const rec=recs.find(r=>String(r.id)===String(id));
   if(rec){
     if(!rec.comments) rec.comments=[];
     const n=new Date();
     rec.comments.push({user:ROLES[currentUser].label,text,time:n.getHours()+':'+String(n.getMinutes()).padStart(2,'0')});
-    saveRecs(recs);allRecs=recs;
+    await saveRecs(recs);allRecs=recs;
   }
   openDetail(id);
 }
 
-function addRecTask(id){
+async function addRecTask(id){
   const inp=document.getElementById('sheet-task-input');
   const val=inp.value.trim();
   if(!val) return;
-  const recs=loadRecsLocal();
+  const recs=await loadRecsLocal();
   const rec=recs.find(r=>String(r.id)===String(id));
-  if(rec){if(!rec.tasks)rec.tasks=[];rec.tasks.push({id:Date.now(),text:val,done:false});saveRecs(recs);allRecs=recs;}
+  if(rec){if(!rec.tasks)rec.tasks=[];rec.tasks.push({id:Date.now(),text:val,done:false});await saveRecs(recs);allRecs=recs;}
   openDetail(id);loadTasks();
 }
 
-function toggleRecTask(recId,taskId){
-  const recs=loadRecsLocal();
+async function toggleRecTask(recId,taskId){
+  const recs=await loadRecsLocal();
   const rec=recs.find(r=>String(r.id)===String(recId));
-  if(rec&&rec.tasks){rec.tasks=rec.tasks.map(t=>t.id===taskId?{...t,done:!t.done}:t);saveRecs(recs);allRecs=recs;}
+  if(rec&&rec.tasks){rec.tasks=rec.tasks.map(t=>t.id===taskId?{...t,done:!t.done}:t);await saveRecs(recs);allRecs=recs;}
   openDetail(recId);loadTasks();
 }
 
-function toggleMirai(id){
-  const recs=loadRecsLocal();
+async function toggleMirai(id){
+  const recs=await loadRecsLocal();
   const rec=recs.find(r=>String(r.id)===String(id));
   if(rec){
     rec.miraiReflected=!rec.miraiReflected;
     if(rec.miraiReflected) rec.status='未来予想図反映済';
-    saveRecs(recs);allRecs=recs;
+    await saveRecs(recs);allRecs=recs;
   }
   openDetail(id);loadRecs();loadTasks();
 }
