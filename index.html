@@ -188,6 +188,15 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--text
         <option value="ueda">植田</option>
         <option value="kamehashi">亀橋</option>
         <option value="morikawa">森川</option>
+        <option value="ogura">小倉</option>
+        <option value="nanba">南波</option>
+        <option value="morikawa2">森川</option>
+        <option value="yamaoka">山岡</option>
+        <option value="nagasawa">長澤</option>
+        <option value="kawakami">川上</option>
+        <option value="nakamura">中村</option>
+        <option value="kimura">木村</option>
+        <option value="katsu">勝</option>
         <option value="kanri">管理用</option>
       </select>
     </div>
@@ -290,6 +299,10 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--text
       <p id="last-upd">読み込み中...</p>
       <button class="btn-sm" onclick="loadRecs()">🔄 更新</button>
     </div>
+    <div style="display:flex;gap:8px;margin-bottom:1rem">
+      <input type="text" id="search-input" placeholder="🔍 利用者名・内容・部署で検索" oninput="renderRecs()"
+        style="flex:1;font-size:14px;padding:9px 11px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font-family:inherit">
+    </div>
     <div class="filter-row">
       <button class="f-btn active" onclick="setF('all',this)">すべて</button>
       <button class="f-btn" onclick="setF('第一報確認待ち',this)">🔵 確認待ち</button>
@@ -335,7 +348,16 @@ const PASSWORDS = {
   ueda:      'ueda2024',
   kamehashi: 'kame2024',
   morikawa:  'mori2024',
-  kanri:     'kanri0000'
+  kanri:     'kanri0000',
+  ogura:      'ogura1234',
+  nanba:      'nanba1234',
+  morikawa2:  'morikawa21234',
+  yamaoka:    'yamaoka1234',
+  nagasawa:   'nagasawa1234',
+  kawakami:   'kawakami1234',
+  nakamura:   'nakamura1234',
+  kimura:     'kimura1234',
+  katsu:      'katsu1234'
 };
 
 const ROLES = {
@@ -344,10 +366,27 @@ const ROLES = {
   ueda:      {label:'植田（第一報）', cls:'role-first',  level:3},
   kamehashi: {label:'亀橋（管理）',  cls:'role-escal',  level:3},
   morikawa:  {label:'森川（管理）',  cls:'role-escal',  level:3},
-  kanri:     {label:'総管理者',      cls:'role-kanri',  level:9}
+  kanri:     {label:'総管理者',      cls:'role-kanri',  level:9},
+  ogura:      {label:'小倉',  cls:'role-staff', level:1},
+  nanba:      {label:'南波',  cls:'role-staff', level:1},
+  morikawa2:  {label:'森川',  cls:'role-staff', level:1},
+  yamaoka:    {label:'山岡',  cls:'role-staff', level:1},
+  nagasawa:   {label:'長澤',  cls:'role-staff', level:1},
+  kawakami:   {label:'川上',  cls:'role-staff', level:1},
+  nakamura:   {label:'中村',  cls:'role-staff', level:1},
+  kimura:     {label:'木村',  cls:'role-staff', level:1},
+  katsu:      {label:'勝',    cls:'role-staff', level:1}
 };
 
 let currentUser = null;
+
+// タスク指示の種類
+const TASK_TYPES = [
+  { id: 'bucho', label: '① 部長へ報告',        color: 'b-red' },
+  { id: 'kessai', label: '② 朝の決済（火・金）', color: 'b-amber' },
+  { id: 'asaikai', label: '③ 朝会報告・共有',    color: 'b-blue' },
+  { id: 'other', label: '④ その他',             color: 'b-gray' },
+];
 let allRecs = [];
 let curFilter = 'all';
 
@@ -527,6 +566,7 @@ function doLogout(){
   document.getElementById('main-app').style.display='none';
   document.getElementById('login-user').value='';
   document.getElementById('login-pass').value='';
+
 }
 
 // タブ切替
@@ -629,6 +669,17 @@ function renderRecs(){
   let list=allRecs;
   if(curFilter==='虐待リスク') list=allRecs.filter(r=>r.category==='虐待リスク');
   else if(curFilter!=='all') list=allRecs.filter(r=>r.status===curFilter);
+  // 検索フィルター
+  const searchEl=document.getElementById('search-input');
+  if(searchEl && searchEl.value.trim()){
+    const q=searchEl.value.trim().toLowerCase();
+    list=list.filter(r=>
+      (r.user&&r.user.toLowerCase().includes(q))||
+      (r.detail&&r.detail.toLowerCase().includes(q))||
+      (r.floor&&r.floor.toLowerCase().includes(q))||
+      (r.category&&r.category.toLowerCase().includes(q))
+    );
+  }
   if(!list.length){
     el.innerHTML=`<div class="empty">📋<br><br>${allRecs.length===0?'まだ記録がありません':'該当する記録がありません'}</div>`;
     return;
@@ -775,9 +826,17 @@ function openDetail(id){
     <div style="margin-bottom:14px">
       <div style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">対応タスク</div>
       <div id="sheet-tasks">${tasksHtml}</div>
-      <div class="task-add" style="margin-top:8px">
-        <input type="text" id="sheet-task-input" placeholder="タスクを追加" style="flex:1;font-size:14px;padding:9px 11px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font-family:inherit" onkeydown="if(event.key==='Enter')addRecTask('${r.id}')">
-        <button onclick="addRecTask('${r.id}')" class="task-add-btn">＋ 追加</button>
+      <div style="margin-top:10px">
+        <div style="font-size:12px;color:var(--text2);margin-bottom:6px;font-weight:500">職員へのタスク指示を選択</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">
+          ${TASK_TYPES.map(t=>`<button onclick="addTaskType('${r.id}','${t.label}')"
+            style="padding:8px 6px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;text-align:left;color:var(--text)"
+            onmouseover="this.style.background='var(--surface)'" onmouseout="this.style.background='var(--bg)'">${t.label}</button>`).join('')}
+        </div>
+        <div class="task-add" style="margin-top:4px">
+          <input type="text" id="sheet-task-input" placeholder="その他のタスクを手入力" style="flex:1;font-size:14px;padding:9px 11px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg);color:var(--text);font-family:inherit" onkeydown="if(event.key==='Enter')addRecTask('${r.id}')">
+          <button onclick="addRecTask('${r.id}')" class="task-add-btn">＋</button>
+        </div>
       </div>
     </div>
     <div class="mirai-box" style="margin-bottom:14px">
@@ -812,6 +871,19 @@ async function addComment(id){
     await saveRecs(recs);allRecs=recs;
   }
   openDetail(id);
+}
+
+async function addTaskType(id, label){
+  const recs=await loadRecsLocal();
+  const rec=recs.find(r=>String(r.id)===String(id));
+  if(rec){
+    if(!rec.tasks) rec.tasks=[];
+    // 重複チェック
+    if(rec.tasks.find(t=>t.text===label)) return;
+    rec.tasks.push({id:Date.now(),text:label,done:false});
+    await saveRecs(recs);allRecs=recs;
+  }
+  openDetail(id);loadTasks();
 }
 
 async function addRecTask(id){
